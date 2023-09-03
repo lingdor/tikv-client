@@ -38,7 +38,7 @@ set names gbk
 
 save a jpg to tikv:
 ```shell
-cat aa.bmp | rawput aa.jpg
+cat aa.jpg | rawput key1
 ```
 
 output to image file:
