@@ -36,11 +36,12 @@ set names utf8
 set names gbk
 ```
 
+save a jpg to tikv:
 ```shell
-rawget key1
+cat aa.bmp | rawput aa.jpg
 ```
 
+output to image file:
 ```shell
-cat aa.bmp | rawset aa.jpg
+rawget key1 > aa.jpg
 ```
-
