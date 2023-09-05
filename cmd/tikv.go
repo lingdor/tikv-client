@@ -151,6 +151,20 @@ func exec(ctx context.Context, scanner goscan.Scanner) error {
 		}
 	} else if lowerCmd == "exit" {
 		return exitErr
+	} else if lowerCmd == "set" {
+
+		if words, err := scanner.ScanWords(); err != nil {
+			mainErr(err)
+		} else {
+			if len(words) != 2 {
+				return errors.New("wrong parameter")
+			}
+			if strings.ToLower(words[0]) == "names" {
+				lib.SetNames(words[1])
+			} else {
+				return errors.New(fmt.Sprintf("unknow command:set ", words[0]))
+			}
+		}
 	}
 	fmt.Println("done!")
 	return nil
