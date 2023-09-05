@@ -38,10 +38,10 @@ set names gbk
 
 save a jpg to tikv:
 ```shell
-cat aa.jpg | rawput key1
+cat aa.jpg | tikv --pd 127.0.0.1:2379 --exec "rawput key1"
 ```
 
 output to image file:
 ```shell
-rawget key1 > aa.jpg
+ tikv --pd 127.0.0.1:2379 --exec "rawget key1" > aa.jpg
 ```
