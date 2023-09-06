@@ -1,23 +1,18 @@
-package lib
+package internal
 
 import (
 	"bytes"
-	"errors"
-	"fmt"
+	"io"
+
 	"github.com/pingcap/tidb/config"
 	"github.com/pingcap/tidb/store/tikv"
-	"golang.org/x/text/encoding"
-	"golang.org/x/text/encoding/simplifiedchinese"
+	"golang.org/x/text/encoding/ianaindex"
 	"golang.org/x/text/transform"
-	"io"
 )
 
 var client *tikv.RawKVClient
 
-// var encoder transform.Transformer = encoding.Encoder{}
-// var decoder transform.Transformer = encoding.Decoder{}
-var encoder transform.Transformer = simplifiedchinese.GBK.NewEncoder()
-var decoder transform.Transformer = simplifiedchinese.GBK.NewDecoder()
+var names = "utf-8"
 
 func Connect(pd string) error {
 	cli, err := tikv.NewRawKVClient([]string{pd}, config.Security{})
@@ -29,21 +24,24 @@ func Connect(pd string) error {
 }
 
 func SetNames(name string) error {
-	switch name {
-	case "utf8":
-		encoder = encoding.Encoder{}
-		decoder = encoding.Decoder{}
-	case "gbk":
-		encoder = simplifiedchinese.GBK.NewEncoder()
-		decoder = simplifiedchinese.GBK.NewDecoder()
-	default:
-		return errors.New(fmt.Sprintf("no found names :%s", name))
+
+	if name == "utf8" {
+		name = "utf-8"
 	}
+	if _, err := ianaindex.MIB.Encoding(names); err != nil {
+		return err
+	}
+
+	names = name
 	return nil
 }
 
 func strToBytes(str string) ([]byte, error) {
-	reader := transform.NewReader(bytes.NewReader([]byte(str)), encoder)
+	e, err := ianaindex.MIB.Encoding(names)
+	if err != nil {
+		return []byte{}, err
+	}
+	reader := transform.NewReader(bytes.NewReader([]byte(str)), e.NewEncoder())
 	return io.ReadAll(reader)
 }
 
@@ -64,7 +62,11 @@ func RawGet(key string, writer io.Writer) (n int, err error) {
 }
 
 func Get(key string, writer io.Writer) (int, error) {
-	transWriter := transform.NewWriter(writer, decoder)
+	e, err := ianaindex.MIB.Encoding(names)
+	if err != nil {
+		return 0, err
+	}
+	transWriter := transform.NewWriter(writer, e.NewDecoder())
 	return RawGet(key, transWriter)
 }
 
@@ -85,7 +87,11 @@ func RawPut(key string, reader io.Reader) error {
 }
 
 func Put(key string, reader io.Reader) error {
-	transReader := transform.NewReader(reader, encoder)
+	e, err := ianaindex.MIB.Encoding(names)
+	if err != nil {
+		return err
+	}
+	transReader := transform.NewReader(reader, e.NewEncoder())
 	return RawPut(key, transReader)
 }
 

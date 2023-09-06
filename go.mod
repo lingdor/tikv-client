@@ -56,3 +56,6 @@ require (
 	google.golang.org/grpc v1.26.0 // indirect
 	gopkg.in/natefinch/lumberjack.v2 v2.0.0 // indirect
 )
+replace(
+	github.com/lingdor/goscan => ../goscan
+)

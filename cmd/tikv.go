@@ -6,10 +6,12 @@ import (
 	"errors"
 	"flag"
 	"fmt"
-	"github.com/lingdor/goscan"
-	"github.com/lingdor/tikv-client/lib"
+	"io"
 	"os"
 	"strings"
+
+	"github.com/lingdor/goscan"
+	"github.com/lingdor/tikv-client/internal"
 )
 
 /*
@@ -20,7 +22,8 @@ tikv -pd 127.0.0.1:2379,127.0.0.2:2379
 or
 tikv --node 127.0.0.1:20160
 */
-var exitErr error = errors.New("exit")
+var errExit = errors.New("exit")
+var errWrongParam = errors.New("wrong parameter")
 
 func main() {
 
@@ -33,13 +36,13 @@ func main() {
 	flag.Parse()
 	ctx := context.Background()
 
-	if err := lib.Connect(param_pd); err != nil {
+	if err := internal.Connect(param_pd); err != nil {
 		mainErr(err)
 	}
 
 	if param_exec != "" {
 		reader := bytes.NewReader([]byte(param_exec + "\r"))
-		scanner := goscan.NewFScanner(reader)
+		scanner := goscan.NewFLineScanner(reader)
 		if err := exec(ctx, scanner); err != nil {
 			mainErr(err)
 		}
@@ -48,10 +51,15 @@ func main() {
 	fmt.Println("tikv connected success!")
 
 	for {
-		scanner := goscan.NewScanner()
+		scanner := goscan.NewLineScanner()
 		if err := exec(ctx, scanner); err != nil {
-			if errors.Is(err, exitErr) {
+			if errors.Is(err, errExit) {
 				return
+			} else if err == errWrongParam {
+				fmt.Println(err.Error())
+				continue
+			} else if err == io.EOF {
+				fmt.Println("param uncheck")
 			} else {
 				mainErr(err)
 			}
@@ -66,12 +74,9 @@ func mainErr(err error) {
 }
 
 func exec(ctx context.Context, scanner goscan.Scanner) error {
-	var isEndParam bool
-	cmd, isEndParam, err := scanner.Scan()
+	cmd, err := scanner.Scan()
 	if err != nil {
-		mainErr(err)
-	} else if isEndParam {
-		return nil
+		return err
 	}
 
 	lowerCmd := strings.ToLower(cmd)
@@ -79,90 +84,75 @@ func exec(ctx context.Context, scanner goscan.Scanner) error {
 	if lowerCmd == "get" {
 
 		if words, err := scanner.ScanWords(); err != nil {
-			mainErr(err)
+			return err
 		} else {
 			for _, word := range words {
 				var valLen int
 				fmt.Printf("%s: ", word)
-				if valLen, err = lib.Get(word, os.Stdout); err != nil {
-					mainErr(err)
+				if valLen, err = internal.Get(word, os.Stdout); err != nil {
+					return err
 				}
-				fmt.Printf("(length:%d)\n", valLen)
+				fmt.Printf(" (len:%d)\n", valLen)
 			}
 		}
 	} else if lowerCmd == "rawget" {
 
 		var getKey string
 
-		if getKey, isEndParam, err = scanner.Scan(); err != nil {
-			mainErr(err)
-		} else if !isEndParam {
-			if check, err := scanner.CheckToEnd(); err != nil {
-				mainErr(err)
-			} else if !check {
-				return errors.New("wrong parameter")
-			}
+		if getKey, err = scanner.Scan(); err != nil {
+			return err
 		}
-		if _, err := lib.RawGet(getKey, os.Stdout); err != nil {
-			mainErr(err)
+		if err = scanner.ToEnd(); err != nil {
+			return err
+		}
+		if _, err := internal.RawGet(getKey, os.Stdout); err != nil {
+			return err
 		}
 
 	} else if lowerCmd == "rawput" {
 
 		var putKey string
-		if putKey, isEndParam, err = scanner.Scan(); err != nil {
-			mainErr(err)
-		} else if !isEndParam {
-			if check, err := scanner.CheckToEnd(); err != nil {
-				mainErr(err)
-			} else if !check {
-				return errors.New("wrong parameter")
-			}
+		if putKey, err = scanner.Scan(); err != nil {
+			return err
 		}
-		if err := lib.RawPut(putKey, os.Stdin); err != nil {
+		if err = scanner.ToEnd(); err != nil {
+			return err
+		}
+		if err := internal.RawPut(putKey, os.Stdin); err != nil {
 			mainErr(err)
 		}
 	} else if lowerCmd == "put" {
 
 		var putKey, putVal string
 
-		if putKey, isEndParam, err = scanner.Scan(); err != nil {
-			mainErr(err)
-		} else if isEndParam {
-			return errors.New("wrong parameter")
+		if putKey, err = scanner.Scan(); err != nil {
+			return err
 		}
-		if putVal, isEndParam, err = scanner.Scan(); err != nil {
-			mainErr(err)
-		} else if !isEndParam {
-			if putVal, isEndParam, err = scanner.Scan(); err != nil {
-				mainErr(err)
-			} else if !isEndParam {
-				if check, err := scanner.CheckToEnd(); err != nil {
-					mainErr(err)
-				} else if !check {
-					return errors.New("wrong parameter")
-				}
-			}
+		if putVal, err = scanner.Scan(); err != nil {
+			return err
+		}
+		if err = scanner.ToEnd(); err != nil {
+			return err
 		}
 
 		putReader := bytes.NewReader([]byte(putVal))
-		if err = lib.Put(putKey, putReader); err != nil {
-			mainErr(err)
+		if err = internal.Put(putKey, putReader); err != nil {
+			return err
 		}
 	} else if lowerCmd == "exit" {
-		return exitErr
+		return errExit
 	} else if lowerCmd == "set" {
 
 		if words, err := scanner.ScanWords(); err != nil {
-			mainErr(err)
+			return err
 		} else {
 			if len(words) != 2 {
-				return errors.New("wrong parameter")
+				return errWrongParam
 			}
 			if strings.ToLower(words[0]) == "names" {
-				lib.SetNames(words[1])
+				internal.SetNames(words[1])
 			} else {
-				return errors.New(fmt.Sprintf("unknow command:set ", words[0]))
+				return errWrongParam
 			}
 		}
 	}
